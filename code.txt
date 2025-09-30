@@ -1,0 +1,1027 @@
+'use client'
+
+
+import React, { useEffect, useMemo, useState, useRef } from 'react';
+import Head from 'next/head';
+import {
+BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
+ResponsiveContainer, LabelList
+} from 'recharts';
+import {
+Search, Loader2, Download, X as XIcon, Eye,
+Sun, Moon, ChevronLeft, ChevronRight, Pause, Play,
+CopyIcon
+} from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+
+// =========================
+// Tipos y utilidades
+// =========================
+type Registro = {
+  Proveedor: string;
+  Medio: string;
+  Mes: string;
+  Resolución: string;
+  Importe: number;
+  __Año?: number;
+  __Fuente?: string;
+};
+
+const currencyFormatter = new Intl.NumberFormat('es-AR', {
+  style: 'currency',
+  currency: 'ARS',
+  maximumFractionDigits: 2
+});
+
+const normalize = (s: string) =>
+  (s || '').normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
+
+function yearFromFilename(name: string): number {
+  const m = name.match(/(20\d{2})/);
+  return m ? parseInt(m[1], 10) : 0;
+}
+
+// URL PDF robusta
+function pdfUrl(r: Registro): string | null {
+  if (!r.__Año || !r.Mes || !r.Resolución) return null;
+  const mes = r.Mes.charAt(0).toUpperCase() + r.Mes.slice(1).toLowerCase();
+  const folder = `Pauta - Pauta provincia de Buenos Aires ${r.__Año}`;
+  let base = r.Resolución.trim();
+  if (!base.toLowerCase().startsWith('resolución')) base = `Resolución ${base}`;
+  if (!base.toLowerCase().endsWith('.pdf')) base = `${base}.pdf`;
+  return `/${encodeURIComponent(folder)}/${encodeURIComponent(mes)}/${encodeURIComponent(base)}`;
+}
+
+function firstLetterOf(name: string): string {
+  if (!name) return '#';
+  const ch = name.trim().charAt(0).toUpperCase();
+  return ch >= 'A' && ch <= 'Z' ? ch : '#';
+}
+
+// =========================
+// Slides del modal de inicio
+// =========================
+type Slide = { titulo: string; bullets: string[] };
+
+const INTRO_SLIDES: Slide[] = [
+  {
+    titulo: '¿Sabías que si el Gobernador usa el 100% de lo que gasta en pauta puede mejorar? 🛡️ Seguridad',
+    bullets: [
+      '💰 $79.284.916.379 ARS (u$s 83.457.806) – 100%',
+      '🚓 Comprar 15.800 patrulleros ($5.000.000 c/u).',
+      '📹 Instalar 158.000 cámaras de seguridad ($500.000 c/u).',
+      '👮 Pagar el aumento salarial del 30% para más de 90.000 policías bonaerenses durante un año.',
+      '🛡️ Comprar 80.000 chalecos antibalas ($300.000 c/u).',
+      '🚨 Renovar sistemas de comunicación digital y GPS para toda la fuerza.',
+    ],
+  },
+  {
+    titulo: '¿Sabías que si el Gobernador usa el 100% de lo que gasta en pauta puede mejorar? 🎓 Educación',
+    bullets: [
+      '💰 $79.284.916.379 ARS (u$s 83.457.806) – 100%',
+      '🏫 Construir 1.585 escuelas nuevas ($50.000.000 c/u).',
+      '💻 Entregar 528.000 notebooks ($150.000 c/u).',
+      '📚 Dotar de 10 millones de libros de texto ($8.000 c/u).',
+      '👩‍🏫 Financiar un aumento del 25% en salarios docentes por un año.',
+      '🏫 Equipar 3.000 escuelas con laboratorios de ciencias y tecnología ($5.000.000 c/u).',
+    ],
+  },
+  {
+    titulo: '¿Sabías que si el Gobernador usa el 100% de lo que gasta en pauta puede mejorar? 🏥 Salud',
+    bullets: [
+      '💰 $79.284.916.379 ARS (u$s 83.457.806) – 100%',
+      '🏥 Construir o equipar 395 hospitales ($200.000.000 c/u).',
+      '🚑 Comprar 5.285 ambulancias ($15.000.000 c/u).',
+      '💉 Financiar la vacunación completa contra la gripe para toda la población bonaerense.',
+      '🩺 Adquirir 10.000 respiradores artificiales ($4.000.000 c/u).',
+      '⚕️ Aumentar en 20% los salarios de médicos y enfermeros durante un año.',
+      '🧪 Comprar 100.000 equipos de diagnóstico por imágenes y laboratorio ($700.000 c/u).',
+      'NOTA: IOMA (a cargo de Kicillof) le debe al Garrahan $ 4.135.942.984.',
+    ],
+  },
+  {
+    titulo: '¿Sabías que si el Gobernador usa el 100% de lo que gasta en pauta puede mejorar? 🚧 Infraestructura',
+    bullets: [
+      '💰 $79.284.916.379 ARS (u$s 83.457.806) – 100%',
+      '🚰 Ampliar redes de agua potable y cloacas a más de 1 millón de hogares.',
+      '🛣️ Pavimentar 7.900 cuadras urbanas ($10.000.000 c/u).',
+      '🏗️ Construir 250 centros comunitarios ($300.000.000 c/u).',
+      '🚍 Renovar la flota de 2.000 colectivos urbanos ($30.000.000 c/u).',
+      '💡 Instalar 4 millones de luminarias LED ($20.000 c/u).',
+    ],
+  },
+  {
+    titulo: '¿Sabías que si el Gobernador usa el 100% de lo que gasta en pauta puede mejorar? 🤝 Desarrollo Social',
+    bullets: [
+      '💰 $79.284.916.379 ARS (u$s 83.457.806) – 100%',
+      '🍲 Financiar 26.000 comedores comunitarios durante un año ($3.000.000 c/u).',
+      '👵 Otorgar 79.000 pensiones sociales de $1.000.000 c/u.',
+      '🎓 Brindar 793.000 becas de capacitación laboral de $100.000 c/u.',
+      '🏘️ Construir 40.000 viviendas sociales ($2.000.000 c/u).',
+      '🧒 Financiar jardines maternales en 500 municipios ($100.000.000 c/u).',
+    ],
+  },
+];
+
+// =========================
+// Modal Slider (centrado + barra progreso + play/pause)
+// =========================
+function IntroModal({
+  open,
+  onClose,
+  dark,
+}: {
+  open: boolean;
+  onClose: () => void;
+  dark: boolean;
+}) {
+  const [idx, setIdx] = useState(0);
+  const [playing, setPlaying] = useState(true);
+  const [progress, setProgress] = useState(0); // 0..100
+  const total = INTRO_SLIDES.length;
+
+  const hoverRef = useRef(false);
+  const lastTs = useRef<number | null>(null);
+  const rafId = useRef<number | null>(null);
+
+  const DURATION = 6000; // ms
+
+  // Avance con requestAnimationFrame para barra suave
+  useEffect(() => {
+    if (!open) return;
+
+    const step = (ts: number) => {
+      if (!playing || hoverRef.current) {
+        lastTs.current = ts;
+      } else {
+        if (lastTs.current == null) lastTs.current = ts;
+        const dt = ts - lastTs.current;
+        lastTs.current = ts;
+        setProgress((p) => {
+          const inc = (dt / DURATION) * 100;
+          const next = p + inc;
+          if (next >= 100) {
+            setIdx((i) => (i + 1) % total);
+            return 0;
+          }
+          return next;
+        });
+      }
+      rafId.current = requestAnimationFrame(step);
+    };
+
+    rafId.current = requestAnimationFrame(step);
+    return () => {
+      if (rafId.current) cancelAnimationFrame(rafId.current);
+      rafId.current = null;
+      lastTs.current = null;
+    };
+  }, [open, playing, total]);
+
+  const go = (next: number) => {
+    setIdx((next + total) % total);
+    setProgress(0);
+    lastTs.current = null;
+  };
+
+  const togglePlay = () => {
+    setPlaying((p) => !p);
+    lastTs.current = null;
+  };
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <>
+          {/* Backdrop */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 0.6 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-40 bg-black"
+            onClick={onClose}
+          />
+
+          {/* Contenedor full-screen centrado */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.98 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.98 }}
+            transition={{ type: 'spring', stiffness: 220, damping: 22 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            onMouseEnter={() => (hoverRef.current = true)}
+            onMouseLeave={() => (hoverRef.current = false)}
+          >
+            <div className={`relative card w-[min(960px,94vw)] ${dark ? 'bg-neutral-900 border border-neutral-700 text-neutral-100' : 'bg-white border border-neutral-200 text-neutral-900'} p-5 sm:p-6 overflow-hidden`}>
+              {/* Cerrar */}
+              <button
+                onClick={onClose}
+                className={`absolute right-3 top-3 rounded-md px-2 py-1 text-sm ${dark ? 'bg-neutral-800 hover:bg-neutral-700' : 'bg-neutral-100 hover:bg-neutral-200'}`}
+                aria-label="Cerrar"
+                title="Cerrar"
+              >
+                <XIcon className="h-4 w-4" />
+              </button>
+
+              {/* Barra de progreso */}
+              <div className={`absolute left-0 top-0 h-1 w-full ${dark ? 'bg-neutral-800' : 'bg-neutral-200'}`}>
+                <div
+                  className="h-full transition-[width] duration-100 linear"
+                  style={{ width: `${progress}%`, background: dark ? '#60a5fa' : '#0ea5e9' }}
+                />
+              </div>
+
+              {/* Slides */}
+              <div className="min-h-[280px] sm:min-h-[260px] pt-2">
+                <motion.h3
+                  key={`title-${idx}`}
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="text-lg sm:text-xl font-bold mb-3 leading-snug"
+                >
+                  {INTRO_SLIDES[idx].titulo}
+                </motion.h3>
+                <motion.ul
+                  key={`list-${idx}`}
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.2, delay: 0.05 }}
+                  className="space-y-2 text-sm sm:text-base"
+                >
+                  {INTRO_SLIDES[idx].bullets.map((b, i) => (
+                    <li key={i} className="leading-relaxed">• {b}</li>
+                  ))}
+                </motion.ul>
+              </div>
+
+              {/* Controles */}
+              <div className="mt-4 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => go(idx - 1)}
+                    className="btn btn-soft inline-flex items-center gap-1 text-sm"
+                    title="Anterior"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    Anterior
+                  </button>
+                  <button
+                    onClick={() => go(idx + 1)}
+                    className="btn btn-soft inline-flex items-center gap-1 text-sm"
+                    title="Siguiente"
+                  >
+                    Siguiente
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={togglePlay}
+                    className="btn btn-soft inline-flex items-center gap-2 text-sm"
+                    title={playing ? 'Pausar' : 'Reproducir'}
+                  >
+                    {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                    {playing ? 'Pausar' : 'Play'}
+                  </button>
+                  {/* Dots */}
+                  <div className="flex items-center gap-2">
+                    {Array.from({ length: total }).map((_, i) => (
+                      <button
+                        key={i}
+                        onClick={() => go(i)}
+                        aria-label={`Ir al slide ${i + 1}`}
+                        className={`h-2.5 w-2.5 rounded-full ${i === idx ? (dark ? 'bg-blue-400' : 'bg-sky-500') : (dark ? 'bg-neutral-700' : 'bg-neutral-300')}`}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
+  );
+}
+
+// =========================
+// Página principal
+// =========================
+export default function Page() {
+  const [data, setData] = useState<Registro[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  // Tema: noche por defecto
+  const [dark, setDark] = useState(true);
+
+  // Modal de inicio
+  const [showIntro, setShowIntro] = useState(true);
+
+  // Búsqueda
+  const [queryInput, setQueryInput] = useState('');
+  const [query, setQuery] = useState('');
+  const [searching, setSearching] = useState(false);
+
+  // Medio seleccionado (gráfico en detalle)
+  const [selectedMedium, setSelectedMedium] = useState<string | null>(null);
+
+  // Tabs / filtros
+  const [yearFilter, setYearFilter] = useState<number | 'all'>('all');
+  const [activeTab, setActiveTab] = useState<'top20' | 'az'>('top20');
+
+  // Índice A–Z horizontal
+  const letters = ['#', ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('')];
+  const [azLetter, setAzLetter] = useState<'ALL' | '#' | 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'I' | 'J' | 'K' | 'L' | 'M' | 'N' | 'O' | 'P' | 'Q' | 'R' | 'S' | 'T' | 'U' | 'V' | 'W' | 'X' | 'Y' | 'Z'>('ALL');
+
+  // Paginación
+  const [page, setPage] = useState(1);
+  const pageSize = 50;
+
+  // Export
+  const [exportYear, setExportYear] = useState<'all' | number>('all');
+
+  const detailRef = useRef<HTMLDivElement>(null);
+
+  // Tema al iniciar
+  useEffect(() => {
+    const pref = localStorage.getItem('pba_theme');
+    if (pref === 'light') {
+      setDark(false);
+      document.documentElement.classList.remove('dark');
+    } else {
+      setDark(true);
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('pba_theme', 'dark');
+    }
+  }, []);
+
+  function toggleTheme() {
+    setDark(prev => {
+      const next = !prev;
+      document.documentElement.classList.toggle('dark', next);
+      localStorage.setItem('pba_theme', next ? 'dark' : 'light');
+      return next;
+    });
+  }
+
+  // Cargar JSON
+  useEffect(() => {
+    let canceled = false;
+    async function loadDefaults() {
+      setLoading(true);
+      const defaults = [
+        { url: '/data/pauta_bsas_2023.json', name: 'pauta_bsas_2023.json' },
+        { url: '/data/pauta_bsas_2024.json', name: 'pauta_bsas_2024.json' },
+        { url: '/data/pauta_bsas_2025.json', name: 'pauta_bsas_2025.json' }
+      ];
+      const chunks: Registro[] = [];
+      for (const f of defaults) {
+        try {
+          const res = await fetch(f.url, { cache: 'no-store' });
+          if (!res.ok) continue;
+          const json = await res.json();
+          const year = yearFromFilename(f.name);
+          for (const r of json as Registro[]) {
+            chunks.push({ ...r, __Año: r.__Año ?? year, __Fuente: f.name });
+          }
+        } catch {}
+      }
+      if (!canceled) {
+        setData(chunks);
+        setLoading(false);
+      }
+    }
+    loadDefaults();
+    return () => { canceled = true; };
+  }, []);
+
+  // Años disponibles
+  const availableYears = useMemo(() => {
+    const s = new Set<number>();
+    data.forEach(d => d.__Año && s.add(d.__Año));
+    return Array.from(s).sort((a, b) => a - b);
+  }, [data]);
+
+  // Totales por año (gráfico principal)
+  const totalsByYear = useMemo(() => {
+    const m = new Map<number, number>();
+    for (const r of data) {
+      const y = r.__Año || 0;
+      m.set(y, (m.get(y) || 0) + (Number(r.Importe) || 0));
+    }
+    return Array.from(m.entries())
+      .filter(([y]) => y > 0)
+      .sort((a, b) => a[0] - b[0])
+      .map(([y, t]) => ({ year: y, total: t }));
+  }, [data]);
+
+  const grandTotal = useMemo(
+    () => totalsByYear.reduce((acc, x) => acc + x.total, 0),
+    [totalsByYear]
+  );
+
+  // Top 20 (todos los años)
+  type TopMedio = {
+    Medio: string;
+    y2023: number;
+    y2024: number;
+    y2025: number;
+    total: number;
+  };
+
+  const top20AllYears: TopMedio[] = useMemo(() => {
+    const map = new Map<string, { y2023: number; y2024: number; y2025: number; total: number }>();
+    for (const r of data) {
+      const medio = r.Medio?.trim() || r.Proveedor?.trim() || '—';
+      const y = r.__Año || 0;
+      const imp = Number(r.Importe) || 0;
+      if (!map.has(medio)) map.set(medio, { y2023: 0, y2024: 0, y2025: 0, total: 0 });
+      const acc = map.get(medio)!;
+      if (y === 2023) acc.y2023 += imp;
+      else if (y === 2024) acc.y2024 += imp;
+      else if (y === 2025) acc.y2025 += imp;
+      acc.total += imp;
+    }
+    const arr: TopMedio[] = Array.from(map.entries()).map(([Medio, v]) => ({ Medio, ...v }));
+    arr.sort((a, b) => b.total - a.total || a.Medio.localeCompare(b.Medio));
+    return arr.slice(0, 20);
+  }, [data]);
+
+  // ÍNDICE A–Z ORDENADO POR MONTO (según año o total)
+  const azCards = useMemo(() => {
+    const acc = new Map<string, { y2023: number; y2024: number; y2025: number; total: number; criterio: number }>();
+    for (const r of data) {
+      const medio = r.Medio?.trim() || r.Proveedor?.trim();
+      if (!medio) continue;
+      if (!acc.has(medio)) acc.set(medio, { y2023: 0, y2024: 0, y2025: 0, total: 0, criterio: 0 });
+      const a = acc.get(medio)!;
+      const imp = Number(r.Importe) || 0;
+      if (r.__Año === 2023) a.y2023 += imp;
+      if (r.__Año === 2024) a.y2024 += imp;
+      if (r.__Año === 2025) a.y2025 += imp;
+      a.total += imp;
+    }
+    const rows = Array.from(acc.entries()).map(([Medio, v]) => {
+      const criterio = yearFilter === 'all' ? v.total :
+        (yearFilter === 2023 ? v.y2023 : yearFilter === 2024 ? v.y2024 : v.y2025);
+      return { Medio, ...v, criterio };
+    });
+    rows.sort((a, b) => b.criterio - a.criterio || a.Medio.localeCompare(b.Medio));
+    return rows;
+  }, [data, yearFilter]);
+
+  // A–Z filtrado por letra
+  const azFiltered = useMemo(() => {
+    if (azLetter === 'ALL') return azCards;
+    return azCards.filter(c => firstLetterOf(c.Medio) === azLetter);
+  }, [azCards, azLetter]);
+
+  // DETALLE: búsqueda/año + orden + paginación
+  const filteredDetail = useMemo(() => {
+    const q = normalize(query);
+    let arr = data;
+
+    if (q) {
+      arr = arr.filter(r =>
+        normalize(r.Medio).includes(q) ||
+        normalize(r.Proveedor).includes(q) ||
+        normalize(r.Mes).includes(q) ||
+        normalize(r.Resolución).includes(q)
+      );
+    }
+
+    if (yearFilter !== 'all') {
+      arr = arr.filter(r => r.__Año === yearFilter);
+    }
+
+    if (yearFilter !== 'all') {
+      const sums = new Map<string, number>();
+      arr.forEach(r => {
+        const m = r.Medio || r.Proveedor;
+        sums.set(m, (sums.get(m) || 0) + (Number(r.Importe) || 0));
+      });
+      arr.sort((a, b) => {
+        const sa = sums.get(a.Medio || a.Proveedor) || 0;
+        const sb = sums.get(b.Medio || b.Proveedor) || 0;
+        if (sb !== sa) return sb - sa;
+        if ((b.__Año || 0) !== (a.__Año || 0)) return (b.__Año || 0) - (a.__Año || 0);
+        return normalize(b.Mes).localeCompare(normalize(a.Mes));
+      });
+    } else {
+      arr.sort((a, b) => {
+        if ((b.__Año || 0) !== (a.__Año || 0)) return (b.__Año || 0) - (a.__Año || 0);
+        const byMes = normalize(b.Mes).localeCompare(normalize(a.Mes));
+        if (byMes !== 0) return byMes;
+        return (Number(b.Importe) || 0) - (Number(a.Importe) || 0);
+      });
+    }
+
+    return arr;
+  }, [data, query, yearFilter]);
+
+  const totalPages = Math.ceil(filteredDetail.length / pageSize);
+  const paginatedDetail = useMemo(
+    () => filteredDetail.slice((page - 1) * pageSize, page * pageSize),
+    [filteredDetail, page]
+  );
+
+  // ===== Export helpers (CSV/XLS) =====
+  function getExportSlice(scope: 'all' | number) {
+    if (scope === 'all') return filteredDetail;
+    return filteredDetail.filter(r => r.__Año === scope);
+  }
+
+  function exportCSV(scope: 'all' | number) {
+    const slice = getExportSlice(scope);
+    const header = ['Medio', 'Proveedor', 'Mes', 'Resolución', 'Año', 'Importe'];
+    const rows = slice.map(r => [
+      (r.Medio || '').replace(/"/g, '""'),
+      (r.Proveedor || '').replace(/"/g, '""'),
+      (r.Mes || '').replace(/"/g, '""'),
+      (r.Resolución || '').replace(/"/g, '""'),
+      r.__Año ?? '',
+      Number(r.Importe) || 0
+    ]);
+    const csv = [header.join(','), ...rows.map(cols => cols.map(v => (typeof v === 'string' ? `"${v}"` : String(v))).join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = scope === 'all' ? 'pauta_filtrada_todos.csv' : `pauta_filtrada_${scope}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function exportXLS(scope: 'all' | number) {
+    const slice = getExportSlice(scope);
+    const header = ['Medio', 'Proveedor', 'Mes', 'Resolución', 'Año', 'Importe'];
+    const rowsHtml = slice.map(r => (
+      `<tr>
+        <td>${escapeHtml(r.Medio || '')}</td>
+        <td>${escapeHtml(r.Proveedor || '')}</td>
+        <td>${escapeHtml(r.Mes || '')}</td>
+        <td>${escapeHtml(r.Resolución || '')}</td>
+        <td>${r.__Año ?? ''}</td>
+        <td>${Number(r.Importe) || 0}</td>
+      </tr>`
+    )).join('');
+    const html =
+`<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+<head><meta charset="utf-8" /></head>
+<body>
+  <table border="1">
+    <thead><tr>${header.map(h=>`<th>${escapeHtml(h)}</th>`).join('')}</tr></thead>
+    <tbody>${rowsHtml}</tbody>
+  </table>
+</body>
+</html>`;
+    const blob = new Blob([html], { type: 'application/vnd.ms-excel' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = scope === 'all' ? 'pauta_filtrada_todos.xls' : `pauta_filtrada_${scope}.xls`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function escapeHtml(s: string) {
+    return s.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]!));
+  }
+
+  // Acciones UI
+  function handleSearch() {
+    setSearching(true);
+    setPage(1);
+    setQuery(queryInput);
+    const exact = queryInput.trim().toLowerCase();
+    const hasExact = data.some(d => (d.Medio || '').trim().toLowerCase() === exact);
+    setSelectedMedium(hasExact ? queryInput.trim() : null);
+    setTimeout(() => {
+      setSearching(false);
+      detailRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, 250);
+  }
+
+  function clearSearch() {
+    setQueryInput('');
+    setQuery('');
+    setSelectedMedium(null);
+    setPage(1);
+  }
+
+  function verAdjudicaciones(medio: string) {
+    setQueryInput(medio);
+    setQuery(medio);
+    setSelectedMedium(medio);
+    setPage(1);
+    detailRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }
+
+  function onYearChange(e: React.ChangeEvent<HTMLSelectElement>) {
+    const value = e.target.value === 'all' ? 'all' : Number(e.target.value);
+    setYearFilter(value as number | 'all');
+    setExportYear(value as any);
+    setQuery('');
+    setQueryInput('');
+    setSelectedMedium(null);
+    setPage(1);
+    setActiveTab('az');
+    setTimeout(() => detailRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+  }
+
+  // Título contextual
+  const scopeTitle = yearFilter === 'all'
+    ? 'Vista actual: Todos los años — Ordenado por total agregado'
+    : `Vista actual: Año ${yearFilter} — Ordenado por medios con mayor total`;
+
+  // Colores
+  const primaryLight = '#0ea5e9';
+  const primaryDark = '#60a5fa';
+  const barColor = dark ? primaryDark : primaryLight;
+
+  // Totales del medio seleccionado para gráfico en detalle
+  const mediumTotalsForChart = useMemo(() => {
+    if (!selectedMedium) return [];
+    const agg = { y2023: 0, y2024: 0, y2025: 0 };
+    for (const r of data) {
+      const medio = (r.Medio || '').trim();
+      if (medio.toLowerCase() === selectedMedium.toLowerCase()) {
+        const imp = Number(r.Importe) || 0;
+        if (r.__Año === 2023) agg.y2023 += imp;
+        if (r.__Año === 2024) agg.y2024 += imp;
+        if (r.__Año === 2025) agg.y2025 += imp;
+      }
+    }
+    const rows = [
+      { label: '2023', total: agg.y2023 },
+      { label: '2024', total: agg.y2024 },
+      { label: '2025', total: agg.y2025 }
+    ].filter(r => r.total > 0);
+    const sum = agg.y2023 + agg.y2024 + agg.y2025;
+    if (sum > 0) rows.push({ label: 'Total', total: sum });
+    return rows;
+  }, [selectedMedium, data]);
+
+  return (
+    <div className={`${dark ? 'bg-neutral-900 text-neutral-100' : 'bg-neutral-50 text-neutral-900'}`}>
+      <Head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+        <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700;900&display=swap" rel="stylesheet" />
+      </Head>
+      <style jsx global>{`
+        html, body, * { font-family: 'Roboto', system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+        .card { border-radius: 14px; box-shadow: ${dark ? '0 6px 24px rgba(0,0,0,.35)' : '0 6px 24px rgba(0,0,0,.08)'}; }
+        .btn { border-radius: 12px; padding: 8px 12px; }
+        .btn-soft { background: ${dark ? '#1f2937' : '#ffffff'}; border: 1px solid ${dark ? '#374151' : '#e5e7eb'}; color: inherit; }
+        .btn-primary { background: ${dark ? '#2563eb' : primaryLight}; color: #fff; }
+        .chip { font-size: 12px; padding: 4px 8px; border-radius: 999px; border: 1px solid ${dark ? '#374151' : '#e5e7eb'}; background: ${dark ? '#111827' : '#fff'}; }
+        .header-grad { background: linear-gradient(90deg, ${dark ? '#0b1220' : '#ffffff'}, ${dark ? '#0f172a' : '#f0faff'}); }
+        a:hover { opacity: .9 }
+      `}</style>
+
+      {/* Modal de inicio */}
+      <IntroModal open={showIntro} onClose={() => setShowIntro(false)} dark={dark} />
+
+      {/* Header */}
+      <header className={`sticky top-0 z-30 border-b ${dark ? 'border-neutral-800' : 'border-neutral-200'} header-grad backdrop-blur`}>
+        <div className="mx-auto max-w-7xl px-4 py-3 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={toggleTheme}
+              aria-label="Cambiar tema"
+              className="btn btn-soft flex items-center gap-2"
+              title={dark ? 'Modo claro' : 'Modo oscuro'}
+            >
+              {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              <span className="hidden sm:inline text-sm">{dark ? 'Claro' : 'Oscuro'}</span>
+            </button>
+            <motion.h1
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="text-[20px] md:text-2xl font-extrabold tracking-tight"
+              style={{ lineHeight: 1.2 }}
+            >
+              Pauta oficial provincia de Buenos Aires
+            </motion.h1>
+          </div>
+
+          {/* Export controls */}
+          <div className="flex items-center gap-2">
+            <select
+              className="btn btn-soft text-sm"
+              value={exportYear as any}
+              onChange={(e) => setExportYear(e.target.value === 'all' ? 'all' : Number(e.target.value))}
+            >
+              <option value="all">Exportar: Todos los años</option>
+              {availableYears.map(y => <option key={y} value={y}>Exportar: {y}</option>)}
+            </select>
+
+            <button onClick={() => exportCSV(exportYear)} className="btn btn-soft text-sm inline-flex items-center gap-2">
+              <Download className="h-4 w-4" /> Exportar CSV
+            </button>
+            <button onClick={() => exportXLS(exportYear)} className="btn btn-soft text-sm inline-flex items-center gap-2">
+              <Download className="h-4 w-4" /> Exportar XLS
+            </button>
+          </div>
+        </div>
+        {/* SUBHEADER */}
+        <div className={`${dark ? 'bg-neutral-900 text-neutral-100' : 'bg-[#f0faff] text-[#0b4b66]'} border-t ${dark ? 'border-neutral-800' : 'border-[#bae6fd]'} py-2`}>
+          <div className="mx-auto max-w-7xl px-4 text-sm md:text-base font-semibold text-center">
+            {scopeTitle}
+          </div>
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-7xl px-4 py-6 space-y-8">
+        {/* Gráfico principal */}
+        <section className={`card p-4 ${dark ? 'bg-neutral-800 border border-neutral-700' : 'bg-white border border-neutral-200'}`}>
+          <div className="flex items-end justify-between">
+            <h3 className="text-lg font-semibold">Total por año</h3>
+            <div className="text-sm opacity-80">
+              Total acumulado: <strong>{currencyFormatter.format(grandTotal)}</strong>
+            </div>
+          </div>
+          <div className="mt-3 h-72 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={totalsByYear} barSize={48} margin={{ top: 60, right: 24, bottom: 10, left: 64 }}>
+                <CartesianGrid vertical={false} strokeDasharray="3 3" stroke={dark ? '#374151' : '#cfeffd'} />
+                <XAxis dataKey="year" stroke={dark ? '#d1d5db' : '#0b4b66'} />
+                <YAxis
+                  width={84}
+                  tick={{ fontSize: 12, fill: dark ? '#d1d5db' : '#0b4b66' }}
+                  domain={[0, (dataMax: number) => (dataMax || 0) * 1.18]}
+                  tickFormatter={v => currencyFormatter.format(v).replace(/^\$\s?/, '$')}
+                />
+                <Tooltip
+                  contentStyle={{ background: dark ? '#0b1220' : '#f0fbff', border: `1px solid ${dark ? '#374151' : '#bae6fd'}`, color: dark ? '#fff' : '#0b4b66' }}
+                  formatter={(val: any) => currencyFormatter.format(Number(val))}
+                  labelFormatter={lbl => `Año ${lbl}`}
+                />
+                <Bar dataKey="total" radius={[12, 12, 0, 0]} fill={dark ? '#60a5fa' : '#0ea5e9'}>
+                  <LabelList dataKey="total" position="top" offset={8} formatter={(v: any) => currencyFormatter.format(Number(v))} className="text-xs" />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </section>
+
+        {/* Buscador + Año */}
+        <section className="grid gap-4 md:grid-cols-3">
+          <div className="md:col-span-2 flex gap-2">
+            <div className={`flex items-center gap-2 card p-3 w-full ${dark ? 'bg-neutral-800 border border-neutral-700' : 'bg-white border border-neutral-200'}`}>
+              <Search className="h-5 w-5 opacity-70" />
+              <input
+                value={queryInput}
+                onChange={e => setQueryInput(e.target.value)}
+                placeholder="Buscar en todos los años (medio, proveedor, resolución, mes)..."
+                className={`w-full outline-none bg-transparent`}
+              />
+              {query && (
+                <button onClick={clearSearch} title="Limpiar búsqueda">
+                  <XIcon className="h-4 w-4 opacity-70" />
+                </button>
+              )}
+            </div>
+            <button onClick={handleSearch} className="btn btn-primary text-sm inline-flex items-center gap-2">
+              {searching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+              Buscar
+            </button>
+          </div>
+
+          <select className={`btn btn-soft text-sm`} value={yearFilter as any} onChange={onYearChange}>
+            <option value="all">Todos los años</option>
+            {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+        </section>
+
+        {/* Tabs */}
+        <section className={`card p-4 ${dark ? 'bg-neutral-800 border border-neutral-700' : 'bg-white border border-neutral-200'}`}>
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <div className="flex gap-2">
+              <button onClick={() => setActiveTab('top20')}
+                className={`btn ${activeTab === 'top20' ? 'btn-primary' : 'btn-soft'}`}>
+                Top 20 (todos los años)
+              </button>
+              <button onClick={() => setActiveTab('az')}
+                className={`btn ${activeTab === 'az' ? 'btn-primary' : 'btn-soft'}`}>
+                Índice A–Z de medios
+              </button>
+            </div>
+          </div>
+
+          {/* Índice horizontal A–Z */}
+          {activeTab === 'az' && (
+            <div className={`mb-4 px-3 py-3 ${dark ? 'bg-neutral-900 text-neutral-100' : 'bg-[#f0faff] text-[#0b4b66]'} rounded-xl border ${dark ? 'border-neutral-700' : 'border-[#bae6fd]'}`}>
+              <div className="text-sm font-semibold mb-2">Índice A–Z</div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => setAzLetter('ALL')}
+                  className={`chip ${azLetter === 'ALL' ? (dark ? 'bg-neutral-800' : 'bg-white') : ''}`}
+                  title="Todos"
+                >
+                  Todos
+                </button>
+                {letters.map(letter => (
+                  <button
+                    key={letter}
+                    onClick={() => setAzLetter(letter as any)}
+                    className={`chip ${azLetter === letter ? (dark ? 'bg-neutral-800' : 'bg-white') : ''}`}
+                    title={`Filtrar por ${letter === '#' ? '0–9 / Otros' : letter}`}
+                  >
+                    {letter}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Contenido de las solapas */}
+          {activeTab === 'top20' && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+              {top20AllYears.map((row, i) => (
+                <div key={row.Medio} className={`card p-3 ${dark ? 'bg-neutral-800 border border-neutral-700' : 'bg-white border border-neutral-200'}`}>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className={`inline-flex h-7 w-7 items-center justify-center rounded-full text-sm font-semibold ${dark ? 'bg-neutral-700' : 'bg-neutral-100'}`}>
+                      {i + 1}
+                    </span>
+                    <button onClick={() => verAdjudicaciones(row.Medio)} className="text-blue-500" title="Ver adjudicaciones">
+                      <Eye className="h-4 w-4" />
+                    </button>
+                  </div>
+                  {/* NOMBRE DEL MEDIO CLICKEABLE */}
+                  <button
+                    onClick={() => verAdjudicaciones(row.Medio)}
+                    className="font-semibold mb-2 text-left underline-offset-2 hover:underline"
+                    title="Ver adjudicaciones del medio"
+                  >
+                    {row.Medio}
+                  </button>
+                  <div className="grid grid-cols-2 gap-x-2 text-sm">
+                    <div>2023</div><div>{currencyFormatter.format(row.y2023)}</div>
+                    <div>2024</div><div>{currencyFormatter.format(row.y2024)}</div>
+                    <div>2025</div><div>{currencyFormatter.format(row.y2025)}</div>
+                    <div className="font-medium mt-1">Total</div>
+                    <div className="font-medium mt-1">{currencyFormatter.format(row.total)}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {activeTab === 'az' && (
+            <>
+              <div className="text-xs opacity-70 mb-2">
+                {yearFilter === 'all'
+                  ? 'Índice A–Z ordenado por total (2023+2024+2025), de mayor a menor.'
+                  : `Índice A–Z ordenado por total del año ${yearFilter}, de mayor a menor.`}
+              </div>
+              {/* GRID filtrada por letra */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                {azFiltered.map(card => (
+                  <div key={card.Medio} className={`card p-3 ${dark ? 'bg-neutral-800 border border-neutral-700' : 'bg-white border border-neutral-200'}`}>
+                    <div className="flex justify-between items-center mb-2">
+                      {/* NOMBRE DEL MEDIO CLICKEABLE */}
+                      <button
+                        onClick={() => verAdjudicaciones(card.Medio)}
+                        className="font-semibold text-left underline-offset-2 hover:underline"
+                        title="Ver adjudicaciones del medio"
+                      >
+                        {card.Medio}
+                      </button>
+                      <button onClick={() => verAdjudicaciones(card.Medio)} className="text-blue-500" title="Ver adjudicaciones">
+                        <Eye className="h-4 w-4" />
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-2 text-sm">
+                      <div>2023</div><div>{currencyFormatter.format(card.y2023)}</div>
+                      <div>2024</div><div>{currencyFormatter.format(card.y2024)}</div>
+                      <div>2025</div><div>{currencyFormatter.format(card.y2025)}</div>
+                      <div className="font-medium mt-1">Total</div>
+                      <div className="font-medium mt-1">{currencyFormatter.format(card.total)}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </section>
+
+        {/* Detalle */}
+        <section ref={detailRef} className={`card p-4 ${dark ? 'bg-neutral-800 border border-neutral-700' : 'bg-white border border-neutral-200'}`}>
+          <h3 className="text-lg font-semibold mb-3">Detalle de adjudicaciones</h3>
+
+          {/* Gráfico por medio seleccionado */}
+          {selectedMedium && mediumTotalsForChart.length > 0 && (
+            <div className="mb-4">
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-base font-semibold">Resumen del medio: {selectedMedium}</div>
+              </div>
+              <div className="h-56 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={mediumTotalsForChart} barSize={40} margin={{ top: 30, right: 24, bottom: 10, left: 64 }}>
+                    <CartesianGrid vertical={false} strokeDasharray="3 3" stroke={dark ? '#374151' : '#cfeffd'} />
+                    <XAxis dataKey="label" stroke={dark ? '#d1d5db' : '#0b4b66'} />
+                    <YAxis
+                      width={84}
+                      tick={{ fontSize: 12, fill: dark ? '#d1d5db' : '#0b4b66' }}
+                      domain={[0, (dataMax: number) => (dataMax || 0) * 1.18]}
+                      tickFormatter={v => currencyFormatter.format(v).replace(/^\$\s?/, '$')}
+                    />
+                    <Tooltip
+                      contentStyle={{ background: dark ? '#0b1220' : '#f0fbff', border: `1px solid ${dark ? '#374151' : '#bae6fd'}`, color: dark ? '#fff' : '#0b4b66' }}
+                      formatter={(val: any) => currencyFormatter.format(Number(val))}
+                      labelFormatter={(lbl) => (lbl === 'Total' ? 'Total 2023–2025' : `Año ${lbl}`)}
+                    />
+                    <Bar dataKey="total" radius={[12, 12, 0, 0]} fill={dark ? '#60a5fa' : '#0ea5e9'}>
+                      <LabelList dataKey="total" position="top" offset={8} formatter={(v: any) => currencyFormatter.format(Number(v))} className="text-xs" />
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {paginatedDetail.map((r, i) => {
+              const url = pdfUrl(r);
+              const medioNombre = r.Medio || r.Proveedor;
+              return (
+                <div key={`${r.Medio}-${r.Proveedor}-${r.Resolución}-${i}`} className={`card p-3 ${dark ? 'bg-neutral-800 border border-neutral-700' : 'bg-white border border-neutral-200'}`}>
+                  {/* NOMBRE DEL MEDIO CLICKEABLE EN DETALLE */}
+                  <button
+                    onClick={() => verAdjudicaciones(medioNombre)}
+                    className="font-semibold mb-1 text-left underline-offset-2 hover:underline"
+                    title="Ver gráfico y adjudicaciones de este medio"
+                  >
+                    {medioNombre}
+                  </button>
+
+                  <div className="text-sm opacity-80">{r.Proveedor}</div>
+                  <div className="text-sm">Año: {r.__Año} — Mes: {r.Mes}</div>
+                  <div className="text-sm">Resolución: {r.Resolución}</div>
+                  <div className="font-medium mt-1">{currencyFormatter.format(Number(r.Importe) || 0)}</div>
+                  {url && (
+                    <div className="flex gap-2 mt-2">
+                      <a href={url} target="_blank" className="text-blue-500 hover:underline">Ver PDF</a>
+                      <a href={url} download className="text-blue-500 hover:underline">Descargar</a>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Paginación */}
+          {totalPages > 1 && (
+            <div className="flex justify-center gap-4 mt-6">
+              <button
+                disabled={page === 1}
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                className="btn btn-soft disabled:opacity-50">
+                Anterior
+              </button>
+              <span>Página {page} de {totalPages}</span>
+              <button
+                disabled={page === totalPages}
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                className="btn btn-soft disabled:opacity-50">
+                Siguiente
+              </button>
+            </div>
+          )}
+        </section>
+      </main>
+
+     
+
+<footer className={`border-t ${dark ? 'border-neutral-800' : 'border-neutral-200'} py-6 text-center text-sm ${dark ? 'text-neutral-300' : 'text-neutral-600'}`}>
+La vigilancia eterna es el precio de la libertad · Sitio realizado por ⛧{' '}
+<a href="https://x.com/thesau3n" target="_blank" className="underline">
+@thesau3n
+</a>
+<div className="mt-2 flex flex-col items-center gap-2">
+<span>Pueden donarme si quieren a:</span>
+<div className="flex items-center gap-2 bg-black text-white px-3 py-1 rounded-md">
+<code className="text-xs">0x11514999830E4bCCb5D77f679cc6be7A75cc79DE</code>
+<button
+onClick={() => navigator.clipboard.writeText('0x11514999830E4bCCb5D77f679cc6be7A75cc79DE')}
+className="hover:text-blue-400"
+title="Copiar dirección"
+>
+<CopyIcon className="h-4 w-4" />
+</button>
+</div>
+<div className="text-xs opacity-80">
+Red Binance Smart Chain / Ethereum / Polygon </div>
+
+<div className="text-xs opacity-80">
+Fuente: https://normas.gba.gob.ar - Ultima actualización 28/09/2025
+</div>
+</div>
+</footer>
+</div>
+);
+}
