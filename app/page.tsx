@@ -1075,9 +1075,11 @@ export default function Page() {
                     dataKey="mes"
                     stroke={dark ? '#d1d5db' : '#0b4b66'}
                     interval={0}
+                    angle={bp === 'sm' ? -35 : 0}
+                    textAnchor={bp === 'sm' ? 'end' : 'middle'}
+                    tickMargin={8}
                     tick={{
                       fontSize: bp === 'sm' ? 10 : 11,
-                      angle: bp === 'sm' ? -35 : 0,
                       dy: bp === 'sm' ? 8 : 0,
                     }}
                   />
@@ -1405,9 +1407,11 @@ export default function Page() {
                         dataKey="mes"
                         stroke={dark ? '#d1d5db' : '#0b4b66'}
                         interval={0}
-                        tick={{
+                        angle={bp === 'sm' ? -35 : 0}
+                    textAnchor={bp === 'sm' ? 'end' : 'middle'}
+                    tickMargin={8}
+                    tick={{
                           fontSize: bp === 'sm' ? 10 : 11,
-                          angle: bp === 'sm' ? -35 : 0,
                           dy: bp === 'sm' ? 8 : 0,
                         }}
                       />
