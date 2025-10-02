@@ -893,19 +893,27 @@ export default function Page() {
   }
 
   // ===== NUEVO: Fullscreen real (como F11)
-  async function toggleTrueFullscreen() {
-    const el = detailRef.current || document.documentElement;
-    try {
-      if (!document.fullscreenElement) {
-        // @ts-ignore: some browsers support options
-        await el.requestFullscreen?.({ navigationUI: 'hide' }) ?? (el as any).webkitRequestFullscreen?.();
-      } else {
-        await document.exitFullscreen?.() ?? (document as any).webkitExitFullscreen?.();
+async function toggleTrueFullscreen() {
+  const el = detailRef.current || document.documentElement;
+  try {
+    if (!document.fullscreenElement) {
+      if (el.requestFullscreen) {
+        await el.requestFullscreen({ navigationUI: 'hide' } as any);
+      } else if ((el as any).webkitRequestFullscreen) {
+        (el as any).webkitRequestFullscreen();
       }
-    } catch (e) {
-      console.error('Fullscreen error', e);
+    } else {
+      if (document.exitFullscreen) {
+        await document.exitFullscreen();
+      } else if ((document as any).webkitExitFullscreen) {
+        (document as any).webkitExitFullscreen();
+      }
     }
+  } catch (e) {
+    console.error('Fullscreen error', e);
   }
+}
+
 
   // ===== NUEVO: Capturar a JPG
   async function captureJPG(target: 'detalle' | 'pagina' = 'pagina') {
