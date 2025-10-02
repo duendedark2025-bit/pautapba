@@ -1518,7 +1518,7 @@ export default function Page() {
             </div>
 
             <div className="text-xs opacity-80">
-              Fuente: https://normas.gba.gob.ar - Ultima actualización 28/09/2025
+              Fuente: https://normas.gba.gob.ar - Ultima actualización 01/10/2025 - #KICILLOFHDRMP
             </div>
           </div>
         </div>
