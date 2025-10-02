@@ -10,7 +10,7 @@ import {
   Search, Loader2, Download, X as XIcon, Eye,
   Sun, Moon, ChevronLeft, ChevronRight, Pause, Play,
   CopyIcon, ChevronDown, ChevronUp, Link as LinkIcon,
-  Minimize2, Maximize2
+  Minimize2, Maximize2, Camera
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -391,8 +391,6 @@ function IntroModal({
 }
 
 // =========================
-// Etiquetas personalizadas para los gráficos
-// =========================
 function ValueLabel({
   x, y, value, dark, compact = false,
 }: {
@@ -462,7 +460,7 @@ export default function Page() {
   const [chartMode, setChartMode] = useState<ChartMode>('yearTotals');
   const [chartYear, setChartYear] = useState<number | null>(null);
 
-  // Detalle a pantalla completa
+  // Detalle fullscreen real (API Fullscreen)
   const [detailFullscreen, setDetailFullscreen] = useState(false);
 
   // Gráfico en Detalle (por medio) - modos
@@ -471,17 +469,18 @@ export default function Page() {
   const [detailYear, setDetailYear] = useState<number | null>(null);
 
   const detailRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null); // contenedor para capturas
   const bp = useBreakpoint();
 
-  // Evitar scroll del body cuando se expande a pantalla completa
+  // ===== NUEVO: sincronizar estado con Fullscreen API
   useEffect(() => {
-    if (detailFullscreen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
-    return () => { document.body.style.overflow = ''; };
-  }, [detailFullscreen]);
+    const onFsChange = () => {
+      const isFs = !!document.fullscreenElement && document.fullscreenElement === detailRef.current;
+      setDetailFullscreen(isFs);
+    };
+    document.addEventListener('fullscreenchange', onFsChange);
+    return () => document.removeEventListener('fullscreenchange', onFsChange);
+  }, []);
 
   // Tema al iniciar
   useEffect(() => {
@@ -650,7 +649,7 @@ export default function Page() {
     return { year: y, rows };
   }, [selectedMedium, data, detailYear, availableYears]);
 
-  // Top 20 (todos los años)
+  // Top 50 (todos los años) — MODIFICADO
   type TopMedio = {
     Medio: string;
     y2023: number;
@@ -659,7 +658,7 @@ export default function Page() {
     total: number;
   };
 
-  const top20AllYears: TopMedio[] = useMemo(() => {
+  const top50AllYears: TopMedio[] = useMemo(() => {
     const map = new Map<string, { y2023: number; y2024: number; y2025: number; total: number }>();
     for (const r of data) {
       const medio = r.Medio?.trim() || r.Proveedor?.trim() || '—';
@@ -674,7 +673,7 @@ export default function Page() {
     }
     const arr: TopMedio[] = Array.from(map.entries()).map(([Medio, v]) => ({ Medio, ...v }));
     arr.sort((a, b) => b.total - a.total || a.Medio.localeCompare(b.Medio));
-    return arr.slice(0, 20);
+    return arr.slice(0, 50);
   }, [data]);
 
   // ÍNDICE A–Z ORDENADO POR MONTO (según año o total)
@@ -854,7 +853,7 @@ export default function Page() {
     const hasExact = data.some(d => (d.Medio || '').trim().toLowerCase() === exact);
     const medio = hasExact ? queryInput.trim() : null;
     setSelectedMedium(medio);
-    if (medio) setDetailFullscreen(true); // Pantalla completa al entrar desde búsqueda
+    if (medio) toggleTrueFullscreen(); // Pantalla completa real al entrar desde búsqueda
     generateAndSetShareLink(medio);
     setTimeout(() => {
       setSearching(false);
@@ -887,10 +886,58 @@ export default function Page() {
     setQueryInput(medio);
     setQuery(medio);
     setSelectedMedium(medio);
-    setDetailFullscreen(true); // Pantalla completa al entrar desde Top 20 / Índice A–Z / tarjetas
     setPage(1);
     await generateAndSetShareLink(medio);
     detailRef.current?.scrollIntoView({ behavior: 'smooth' });
+    toggleTrueFullscreen(); // abrir en fullscreen real
+  }
+
+  // ===== NUEVO: Fullscreen real (como F11)
+  async function toggleTrueFullscreen() {
+    const el = detailRef.current || document.documentElement;
+    try {
+      if (!document.fullscreenElement) {
+        // @ts-ignore: some browsers support options
+        await el.requestFullscreen?.({ navigationUI: 'hide' }) ?? (el as any).webkitRequestFullscreen?.();
+      } else {
+        await document.exitFullscreen?.() ?? (document as any).webkitExitFullscreen?.();
+      }
+    } catch (e) {
+      console.error('Fullscreen error', e);
+    }
+  }
+
+  // ===== NUEVO: Capturar a JPG
+  async function captureJPG(target: 'detalle' | 'pagina' = 'pagina') {
+    try {
+      // Carga dinámica para evitar SSR issues
+      const html2canvas = (await import('html2canvas')).default;
+      const node = target === 'detalle' ? (detailRef.current ?? rootRef.current) : rootRef.current;
+      if (!node) return;
+
+      const canvas = await html2canvas(node, {
+        backgroundColor: dark ? '#0b0f19' : '#f8fbff',
+        scale: window.devicePixelRatio > 1 ? 2 : 1,
+        useCORS: true,
+        logging: false,
+        windowWidth: document.documentElement.scrollWidth,
+        windowHeight: document.documentElement.scrollHeight,
+      });
+
+      canvas.toBlob((blob) => {
+        if (!blob) return;
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+        a.href = url;
+        a.download = `captura-${target}-${stamp}.jpg`;
+        a.click();
+        URL.revokeObjectURL(url);
+      }, 'image/jpeg', 0.92);
+    } catch (e) {
+      console.error('Error al capturar JPG:', e);
+      alert('No se pudo generar la captura. Reintentá y verificá que el contenido esté visible.');
+    }
   }
 
   // Título contextual
@@ -924,7 +971,7 @@ export default function Page() {
   }, [detailChartMode, availableYears, detailYear]);
 
   return (
-    <div className={`${dark ? 'bg-neutral-900 text-neutral-100' : 'bg-neutral-50 text-neutral-900'}`}>
+    <div ref={rootRef} className={`${dark ? 'bg-neutral-900 text-neutral-100' : 'bg-neutral-50 text-neutral-900'}`}>
       <Head>
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -970,7 +1017,7 @@ export default function Page() {
             </motion.h1>
           </div>
 
-          {/* Export controls */}
+          {/* Export & Captura controls */}
           <div className="flex flex-wrap items-center gap-2">
             <select
               className="btn btn-soft text-sm min-w-[200px]"
@@ -986,6 +1033,11 @@ export default function Page() {
             </button>
             <button onClick={() => exportXLS(exportYear)} className="btn btn-soft text-sm inline-flex items-center gap-2">
               <Download className="h-4 w-4" /> Exportar XLS
+            </button>
+
+            {/* NUEVO: Captura JPG de la página */}
+            <button onClick={() => captureJPG('pagina')} className="btn btn-soft text-sm inline-flex items-center gap-2" title="Capturar toda la página en JPG">
+              <Camera className="h-4 w-4" /> Capturar JPG
             </button>
           </div>
         </div>
@@ -1140,22 +1192,22 @@ export default function Page() {
           </select>
         </section>
 
-        {/* Botones Top 20 / A–Z */}
+        {/* Botones Top 50 / A–Z */}
         <section className={`card p-3 sm:p-4 ${dark ? 'bg-neutral-800 border border-neutral-700' : 'bg-white border border-neutral-200'}`}>
-          {/* Top 20 */}
+          {/* Top 50 — MODIFICADO */}
           <button
             onClick={() => setTopOpen(o => !o)}
             className="w-full flex items-center justify-between btn btn-primary text-left"
             aria-expanded={topOpen}
           >
-            <span className="font-semibold">Top 20 (todos los años)</span>
+            <span className="font-semibold">Top 50 (todos los años)</span>
             {topOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
           </button>
 
           <AnimatePresence initial={false}>
             {topOpen && (
               <motion.div
-                key="top20"
+                key="top50"
                 initial={{ height: 0, opacity: 0 }}
                 animate={{ height: 'auto', opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}
@@ -1163,7 +1215,7 @@ export default function Page() {
                 className="overflow-hidden mt-3"
               >
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                  {top20AllYears.map((row, i) => (
+                  {top50AllYears.map((row, i) => (
                     <div key={row.Medio} className={`card p-3 ${dark ? 'bg-neutral-800 border border-neutral-700' : 'bg-white border border-neutral-200'}`}>
                       <div className="flex items-center justify-between mb-2">
                         <span className={`inline-flex h-7 w-7 items-center justify-center rounded-full text-sm font-semibold ${dark ? 'bg-neutral-700' : 'bg-neutral-100'}`}>
@@ -1291,15 +1343,10 @@ export default function Page() {
           </AnimatePresence>
         </section>
 
-        {/* Detalle (pantalla completa) */}
+        {/* Detalle (Elemento objetivo de fullscreen real y capturas) */}
         <section
           ref={detailRef}
-          className={
-            `${detailFullscreen
-              ? 'fixed inset-0 z-[9999] overflow-y-auto p-3 sm:p-4'
-              : ''}`
-            + ` card p-3 sm:p-4 ${dark ? 'bg-neutral-800 border border-neutral-700' : 'bg-white border border-neutral-200'}`
-          }
+          className={`card p-3 sm:p-4 ${dark ? 'bg-neutral-800 border border-neutral-700' : 'bg-white border border-neutral-200'}`}
           style={detailFullscreen ? { background: dark ? '#0b0f19' : '#f8fbff' } : undefined}
         >
           {/* Barra superior del detalle */}
@@ -1307,12 +1354,20 @@ export default function Page() {
             <div className="flex items-center gap-2">
               <h3 className="text-base sm:text-lg font-semibold">Detalle de adjudicaciones</h3>
               <button
-                onClick={() => setDetailFullscreen(f => !f)}
+                onClick={toggleTrueFullscreen}
                 className="btn btn-soft text-sm inline-flex items-center gap-2"
-                title={detailFullscreen ? 'Minimizar' : 'Pantalla completa'}
+                title={detailFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}
               >
                 {detailFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-                {detailFullscreen ? 'Minimizar' : 'Pantalla completa'}
+                {detailFullscreen ? 'Salir' : 'Pantalla completa'}
+              </button>
+              {/* NUEVO: Captura del bloque de detalle */}
+              <button
+                onClick={() => captureJPG('detalle')}
+                className="btn btn-soft text-sm inline-flex items-center gap-2"
+                title="Capturar este bloque en JPG"
+              >
+                <Camera className="h-4 w-4" /> Capturar detalle
               </button>
             </div>
 
@@ -1408,9 +1463,9 @@ export default function Page() {
                         stroke={dark ? '#d1d5db' : '#0b4b66'}
                         interval={0}
                         angle={bp === 'sm' ? -35 : 0}
-                    textAnchor={bp === 'sm' ? 'end' : 'middle'}
-                    tickMargin={8}
-                    tick={{
+                        textAnchor={bp === 'sm' ? 'end' : 'middle'}
+                        tickMargin={8}
+                        tick={{
                           fontSize: bp === 'sm' ? 10 : 11,
                           dy: bp === 'sm' ? 8 : 0,
                         }}
@@ -1495,6 +1550,7 @@ export default function Page() {
         </section>
       </main>
 
+    
       <footer className={`border-t ${dark ? 'border-neutral-800' : 'border-neutral-200'} py-6 text-center text-sm ${dark ? 'text-neutral-300' : 'text-neutral-600'}`}>
         <div className="px-3 sm:px-4">
           La vigilancia eterna es el precio de la libertad · Sitio realizado por ⛧{' '}
@@ -1518,7 +1574,7 @@ export default function Page() {
             </div>
 
             <div className="text-xs opacity-80">
-              Fuente: https://normas.gba.gob.ar - Ultima actualización 01/10/2025 - #KICILLOFHDRMP
+              Fuente: https://normas.gba.gob.ar - Ultima actualización 02/10/2025 #KICILLOFHDRMP
             </div>
           </div>
         </div>
