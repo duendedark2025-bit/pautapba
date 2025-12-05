@@ -2,13 +2,18 @@
 import { ImageResponse } from 'next/og'
 
 export const runtime = 'edge'
-export const size = { width: 1200, height: 630 }
+export const size = {
+  width: 1200,
+  height: 630,
+}
 export const contentType = 'image/png'
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
-  const t = searchParams.get('t') || 'Pauta oficial provincia de Buenos Aires'
-  const d = searchParams.get('d') || 'Visualización de pauta oficial PBA (2023–2025)'
+  const title =
+    searchParams.get('t') || 'Pauta oficial provincia de Buenos Aires'
+  const subtitle =
+    searchParams.get('d') || 'Visualización de pauta oficial PBA (2023–2025)'
 
   return new ImageResponse(
     (
@@ -18,37 +23,72 @@ export async function GET(req: Request) {
           height: '100%',
           display: 'flex',
           flexDirection: 'column',
-          justifyContent: 'space-between',
-          background: 'linear-gradient(135deg,#0b1220,#0f172a)',
-          color: 'white',
-          padding: 48,
-          fontFamily: 'system-ui, Segoe UI, Roboto, Arial, sans-serif',
+          alignItems: 'flex-start',
+          justifyContent: 'center',
+          background: 'linear-gradient(135deg, #0f172a, #1d4ed8)',
+          color: '#f9fafb',
+          padding: '80px 120px',
+          boxSizing: 'border-box',
+          fontFamily:
+            'system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif',
         }}
       >
-        <div style={{ fontSize: 54, fontWeight: 800, lineHeight: 1.1 }}>{t}</div>
-        <div style={{ fontSize: 28, opacity: 0.9 }}>{d}</div>
         <div
           style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
+            fontSize: 18,
+            fontWeight: 500,
+            opacity: 0.8,
+            marginBottom: 12,
           }}
         >
-          <div style={{ fontSize: 22, opacity: 0.8 }}>pautapba.vercel.app</div>
+          pauta.pba.ar
+        </div>
+        <div
+          style={{
+            fontSize: 52,
+            fontWeight: 800,
+            lineHeight: 1.1,
+            maxWidth: '800px',
+            marginBottom: 24,
+          }}
+        >
+          {title}
+        </div>
+        <div
+          style={{
+            fontSize: 24,
+            fontWeight: 400,
+            opacity: 0.9,
+            maxWidth: '800px',
+            marginBottom: 40,
+          }}
+        >
+          {subtitle}
+        </div>
+        <div
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 12,
+            fontSize: 20,
+            fontWeight: 600,
+          }}
+        >
           <div
             style={{
-              background: '#ff1744',
-              padding: '10px 20px',
-              borderRadius: 999,
-              fontWeight: 700,
-              fontSize: 22,
+              width: 10,
+              height: 10,
+              borderRadius: '999px',
+              backgroundColor: '#22c55e',
             }}
-          >
-            2023 · 2024 · 2025
-          </div>
+          />
+          <span>Pauta oficial · 2023 · 2024 · 2025</span>
         </div>
       </div>
     ),
-    { ...size }
+    {
+      width: size.width,
+      height: size.height,
+    }
   )
 }
