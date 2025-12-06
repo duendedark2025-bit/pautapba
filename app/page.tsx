@@ -695,6 +695,7 @@ const [data, setData] = useState<Registro[]>([]);
   }, [data]);
 
   // ======= Agregaciones (gráfico principal) =======
+   // ======= Agregaciones (gráfico principal) =======
   const totalsByYear = useMemo(() => {
     const m = new Map<number, number>();
     for (const r of data) {
@@ -717,8 +718,8 @@ const [data, setData] = useState<Registro[]>([]);
     'julio','agosto','septiembre','octubre','noviembre','diciembre'
   ];
 
+  // ✅ Versión correcta, sin "as const"
   const DETAIL_MONTHS_ORDER = MONTHS_DESC;
-
 
   const totalsByMonthOfYear = useMemo(() => {
     const y = chartYear ?? availableYears[0];
@@ -729,7 +730,10 @@ const [data, setData] = useState<Registro[]>([]);
         m.set(mes, (m.get(mes) || 0) + (Number(r.Importe) || 0));
       }
     }
-    const rows = DETAIL_MONTHS_ORDER.map(mes => ({ mes: labelMonth(mes), total: m.get(mes) || 0 }));
+    const rows = DETAIL_MONTHS_ORDER.map(mes => ({
+      mes: labelMonth(mes),
+      total: m.get(mes) || 0,
+    }));
     return { year: y, rows };
   }, [data, chartYear, availableYears]);
 
@@ -871,47 +875,41 @@ const [data, setData] = useState<Registro[]>([]);
 
   
     // ===== Export helpers (CSV/XLS) =====
+  // ===== Export helpers (CSV/XLS) =====
   function getExportSlice(scope: 'all' | number) {
     if (scope === 'all') return filteredDetail;
     return filteredDetail.filter(r => r.__Año === scope);
   }
-function exportCSV(scope: 'all' | number) {
+
+  function exportCSV(scope: 'all' | number) {
     const slice = getExportSlice(scope);
     const header = ['Medio', 'Proveedor', 'Mes', 'Resolución', 'Año', 'Importe'];
+
     const rows = slice.map(r => [
       (r.Medio || '').replace(/"/g, '""'),
       (r.Proveedor || '').replace(/"/g, '""'),
       (r.Mes || '').replace(/"/g, '""'),
       (r.Resolución || '').replace(/"/g, '""'),
       r.__Año ?? '',
-      Number(r.Importe) || 0
+      Number(r.Importe) || 0,
     ]);
-    const csv = [header.join(','), ...rows.map(cols => cols.map(v => (typeof v === 'string' ? `"${v}"` : String(v))).join(','))].join('\n');
+
+    const csv = [
+      header.join(','),
+      ...rows.map(cols =>
+        cols
+          .map(v => (typeof v === 'string' ? `"${v}"` : String(v)))
+          .join(',')
+      ),
+    ].join('\n');
+
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  // Totales por Mes (Todos los años) — ORDEN DIC -> ENE
-  const totalsByMonthAllYears = useMemo(() => {
-    const m = new Map<string, number>();
-  // Fallback seguro por si alguna ref falla: recalcula todos los años por mes (Dic->Ene)
-  const getTotalsByMonthAllYears = React.useCallback(() => {
-    const m = new Map<string, number>();
-    for (const r of data) {
-      const mes = canonMonth(r.Mes);
-      m.set(mes, (m.get(mes) || 0) + (Number(r.Importe) || 0));
-    }
-    return DETAIL_MONTHS_ORDER.map(mes => ({ mes: labelMonth(mes), total: m.get(mes) || 0 }));
-  }, [data]);
-
-    for (const r of data) {
-      const mes = canonMonth(r.Mes);
-      m.set(mes, (m.get(mes) || 0) + (Number(r.Importe) || 0));
-    }
-    return DETAIL_MONTHS_ORDER.map(mes => ({ mes: labelMonth(mes), total: m.get(mes) || 0 }));
-  }, [data]);
-
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = scope === 'all' ? 'pauta_filtrada_todos.csv' : `pauta_filtrada_${scope}.csv`;
+    a.download = scope === 'all'
+      ? 'pauta_filtrada_todos.csv'
+      : `pauta_filtrada_${scope}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -919,6 +917,7 @@ function exportCSV(scope: 'all' | number) {
   function exportXLS(scope: 'all' | number) {
     const slice = getExportSlice(scope);
     const header = ['Medio', 'Proveedor', 'Mes', 'Resolución', 'Año', 'Importe'];
+
     const rowsHtml = slice.map(r => (
       `<tr>
         <td>${escapeHtml(r.Medio || '')}</td>
@@ -929,28 +928,66 @@ function exportCSV(scope: 'all' | number) {
         <td>${Number(r.Importe) || 0}</td>
       </tr>`
     )).join('');
+
     const html =
-`<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+`<html xmlns:o="urn:schemas-microsoft-com:office:office"
+       xmlns:x="urn:schemas-microsoft-com:office:excel"
+       xmlns="http://www.w3.org/TR/REC-html40">
 <head><meta charset="utf-8" /></head>
 <body>
   <table border="1">
-    <thead><tr>${header.map(h=>`<th>${escapeHtml(h)}</th>`).join('')}</tr></thead>
+    <thead><tr>${header.map(h => `<th>${escapeHtml(h)}</th>`).join('')}</tr></thead>
     <tbody>${rowsHtml}</tbody>
   </table>
 </body>
 </html>`;
+
     const blob = new Blob([html], { type: 'application/vnd.ms-excel' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = scope === 'all' ? 'pauta_filtrada_todos.xls' : `pauta_filtrada_${scope}.xls`;
+    a.download = scope === 'all'
+      ? 'pauta_filtrada_todos.xls'
+      : `pauta_filtrada_${scope}.xls`;
     a.click();
     URL.revokeObjectURL(url);
   }
 
   function escapeHtml(s: string) {
-    return s.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[m]!));
+    return s.replace(/[&<>"']/g, m => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      '\'': '&#39;',
+    }[m]!));
   }
+
+  // Totales por Mes (Todos los años) — ORDEN DIC -> ENE
+  const totalsByMonthAllYears = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const r of data) {
+      const mes = canonMonth(r.Mes);
+      m.set(mes, (m.get(mes) || 0) + (Number(r.Importe) || 0));
+    }
+    return DETAIL_MONTHS_ORDER.map(mes => ({
+      mes: labelMonth(mes),
+      total: m.get(mes) || 0,
+    }));
+  }, [data]);
+
+  // Fallback seguro por si alguna ref falla: recalcula todos los años por mes (Dic->Ene)
+  const getTotalsByMonthAllYears = React.useCallback(() => {
+    const m = new Map<string, number>();
+    for (const r of data) {
+      const mes = canonMonth(r.Mes);
+      m.set(mes, (m.get(mes) || 0) + (Number(r.Importe) || 0));
+    }
+    return DETAIL_MONTHS_ORDER.map(mes => ({
+      mes: labelMonth(mes),
+      total: m.get(mes) || 0,
+    }));
+  }, [data]);
 
   // === NUEVO: Conteo de proveedores (según filtro de año) ===
   const proveedoresCount = useMemo(() => {
