@@ -717,7 +717,7 @@ const [data, setData] = useState<Registro[]>([]);
     'julio','agosto','septiembre','octubre','noviembre','diciembre'
   ];
 
-  const DETAIL_MONTHS_ORDER = MONTHS_DESC as const;
+  const DETAIL_MONTHS_ORDER = MONTHS_DESC;
 
 
   const totalsByMonthOfYear = useMemo(() => {
