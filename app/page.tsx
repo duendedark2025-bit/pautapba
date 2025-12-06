@@ -41,6 +41,35 @@ const compactFormatter = new Intl.NumberFormat('es-AR', {
 const normalize = (s: string) =>
   (s || '').normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
 
+
+// Canonicaliza nombres de meses a español completo en minúsculas (ej: 'nov'/'nov.'/'noviembre' -> 'noviembre')
+function canonMonth(raw: string): string {
+  const n = normalize(String(raw)).replace(/\./g, ' ').replace(/\s+/g, ' ').trim();
+  // atajos y variantes comunes (es/en/abrev)
+  if (n.startsWith('ene') || n.startsWith('jan')) return 'enero';
+  if (n.startsWith('feb')) return 'febrero';
+  if (n.startsWith('mar')) return 'marzo';
+  if (n.startsWith('abr') || n.startsWith('apr')) return 'abril';
+  if (n.startsWith('may')) return 'mayo';
+  if (n.startsWith('jun')) return 'junio';
+  if (n.startsWith('jul')) return 'julio';
+  if (n.startsWith('ago') || n.startsWith('aug')) return 'agosto';
+  if (n.startsWith('sep') || n.startsWith('set')) return 'septiembre';
+  if (n.startsWith('oct')) return 'octubre';
+  if (n.startsWith('nov')) return 'noviembre';
+  if (n.startsWith('dic') || n.startsWith('dec')) return 'diciembre';
+  // fallback: si coincide con alguno de los oficiales ya normalizados
+  const candidates = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  const hit = candidates.find(m => n === m);
+  return hit || n;
+}
+
+
+// === Helpers de meses (orden universal Dic→Ene) ===
+const MONTHS_DESC = ['diciembre','noviembre','octubre','septiembre','agosto','julio','junio','mayo','abril','marzo','febrero','enero'];
+function monthRank(m: string): number { return MONTHS_DESC.indexOf(canonMonth(m)); }
+function labelMonth(m: string): string { const c = canonMonth(m); return c.charAt(0).toUpperCase() + c.slice(1); }
+
 function yearFromFilename(name: string): number {
   const m = name.match(/(20\d{2})/);
   return m ? parseInt(m[1], 10) : 0;
@@ -49,7 +78,7 @@ function yearFromFilename(name: string): number {
 // URL PDF robusta
 function pdfUrl(r: Registro): string | null {
   if (!r.__Año || !r.Mes || !r.Resolución) return null;
-  const mes = r.Mes.charAt(0).toUpperCase() + r.Mes.slice(1).toLowerCase();
+  const mes = labelMonth(r.Mes);
   const folder = `Pauta - Pauta provincia de Buenos Aires ${r.__Año}`;
   let base = r.Resolución.trim();
   if (!base.toLowerCase().startsWith('resolución')) base = `Resolución ${base}`;
@@ -412,11 +441,87 @@ function ValueLabel({
   );
 }
 
+
+// =========================
+// Splash de inicio (#KICILLOFHDRMP) - CRISP (sin blur, sin escala)
+// =========================
+function SplashScreen({ dark, onDone }: { dark: boolean; onDone: () => void }) {
+  const text = "#PAUTAPBA";
+  const holdAfterMs = 2200;
+
+  React.useEffect(() => {
+    const t = setTimeout(onDone, holdAfterMs + text.length * 60);
+    return () => clearTimeout(t);
+  }, [onDone]);
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        key="splash"
+        initial={{ opacity: 1 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.4 }}
+        className={`fixed inset-0 z-[9999] flex items-center justify-center ${dark ? 'bg-black' : 'bg-white'}`}
+        style={{ overscrollBehavior: 'none' }}
+      >
+        <style jsx>{`
+          .crisp-text {
+            line-height: 1;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            text-rendering: geometricPrecision;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            font-weight: 900;
+            letter-spacing: 0.01em;
+          }
+          .stroke {
+            -webkit-text-stroke: 1px ${'${dark ? "#000" : "#fff"}'};
+          }
+          @keyframes letterIn {
+            from { opacity: 0; }
+            to   { opacity: 1; }
+          }
+        `}</style>
+        <div
+          className={`crisp-text ${dark ? 'text-white' : 'text-black'}`}
+          style={{
+            fontSize: 'clamp(52px, 12vw, 120px)',
+            textAlign: 'center',
+            transform: 'none',
+            filter: 'none'
+          }}
+        >
+          {Array.from(text).map((ch, i) => (
+            <span
+              key={i}
+              style={{
+                display: 'inline-block',
+                opacity: 0,
+                animation: 'letterIn 180ms ease-out forwards',
+                animationDelay: `${i * 60}ms`
+              }}
+            >
+              {ch}
+            </span>
+          ))}
+        </div>
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+
 // =========================
 // Página principal
 // =========================
 export default function Page() {
-  const [data, setData] = useState<Registro[]>([]);
+  
+  // Splash de inicio CRISP
+  const [splashVisible, setSplashVisible] = useState(true);
+  useEffect(() => {
+    // se oculta cuando el componente llama onDone
+  }, []);
+const [data, setData] = useState<Registro[]>([]);
   const [loading, setLoading] = useState(false);
 
   // Tema: noche por defecto
@@ -469,6 +574,19 @@ export default function Page() {
   const [detailYear, setDetailYear] = useState<number | null>(null);
 
   const detailRef = useRef<HTMLDivElement>(null);
+  // --- Búsqueda: scroll suave hacia resultados / proveedor ---
+  const scrollToResults = React.useCallback(() => {
+    const target = detailRef?.current || document.querySelector('#detalle, [data-section="detalle"]') as HTMLElement;
+    if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, []);
+
+  const scrollToFirstMatch = React.useCallback(() => {
+    try {
+      const first = document.querySelector('[data-card="detalle-item"]') as HTMLElement;
+      first?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } catch {}
+  }, []);
+
   const rootRef = useRef<HTMLDivElement>(null); // contenedor para capturas
   const bp = useBreakpoint();
 
@@ -599,19 +717,19 @@ export default function Page() {
     'julio','agosto','septiembre','octubre','noviembre','diciembre'
   ];
 
+  const DETAIL_MONTHS_ORDER = MONTHS_DESC as const;
+
+
   const totalsByMonthOfYear = useMemo(() => {
     const y = chartYear ?? availableYears[0];
     const m = new Map<string, number>();
     for (const r of data) {
       if (r.__Año === y) {
-        const mes = normalize(r.Mes);
+        const mes = canonMonth(r.Mes);
         m.set(mes, (m.get(mes) || 0) + (Number(r.Importe) || 0));
       }
     }
-    const rows = MONTHS_ORDER.map(mes => ({
-      mes: mes.charAt(0).toUpperCase() + mes.slice(1),
-      total: m.get(mes) || 0
-    }));
+    const rows = DETAIL_MONTHS_ORDER.map(mes => ({ mes: labelMonth(mes), total: m.get(mes) || 0 }));
     return { year: y, rows };
   }, [data, chartYear, availableYears]);
 
@@ -638,14 +756,11 @@ export default function Page() {
     for (const r of data) {
       const medio = (r.Medio || '').trim();
       if (medio.toLowerCase() === selectedMedium.toLowerCase() && r.__Año === y) {
-        const mes = normalize(r.Mes);
+        const mes = canonMonth(r.Mes);
         m.set(mes, (m.get(mes) || 0) + (Number(r.Importe) || 0));
       }
     }
-    const rows = MONTHS_ORDER.map(mes => ({
-      mes: mes.charAt(0).toUpperCase() + mes.slice(1),
-      total: m.get(mes) || 0
-    }));
+    const rows = DETAIL_MONTHS_ORDER.map(mes => ({ mes: labelMonth(mes), total: m.get(mes) || 0 }));
     return { year: y, rows };
   }, [selectedMedium, data, detailYear, availableYears]);
 
@@ -712,9 +827,9 @@ export default function Page() {
 
     if (q) {
       arr = arr.filter(r =>
-        normalize(r.Medio).includes(q) ||
+        normalize(r.Medio).includes(q) || canonMonth(r.Mes).includes(q) ||
         normalize(r.Proveedor).includes(q) ||
-        normalize(r.Mes).includes(q) ||
+        canonMonth(r.Mes).includes(q) ||
         normalize(r.Resolución).includes(q)
       );
     }
@@ -734,13 +849,13 @@ export default function Page() {
         const sb = sums.get(b.Medio || b.Proveedor) || 0;
         if (sb !== sa) return sb - sa;
         if ((b.__Año || 0) !== (a.__Año || 0)) return (b.__Año || 0) - (a.__Año || 0);
-        return normalize(b.Mes).localeCompare(normalize(a.Mes));
+        return monthRank(a.Mes) - monthRank(b.Mes);
       });
     } else {
       arr.sort((a, b) => {
         if ((b.__Año || 0) !== (a.__Año || 0)) return (b.__Año || 0) - (a.__Año || 0);
-        const byMes = normalize(b.Mes).localeCompare(normalize(a.Mes));
-        if (byMes !== 0) return byMes;
+        const mr = monthRank(a.Mes) - monthRank(b.Mes);
+        if (mr !== 0) return mr;
         return (Number(b.Importe) || 0) - (Number(a.Importe) || 0);
       });
     }
@@ -754,13 +869,13 @@ export default function Page() {
     [filteredDetail, page]
   );
 
-  // ===== Export helpers (CSV/XLS) =====
+  
+    // ===== Export helpers (CSV/XLS) =====
   function getExportSlice(scope: 'all' | number) {
     if (scope === 'all') return filteredDetail;
     return filteredDetail.filter(r => r.__Año === scope);
   }
-
-  function exportCSV(scope: 'all' | number) {
+function exportCSV(scope: 'all' | number) {
     const slice = getExportSlice(scope);
     const header = ['Medio', 'Proveedor', 'Mes', 'Resolución', 'Año', 'Importe'];
     const rows = slice.map(r => [
@@ -773,6 +888,26 @@ export default function Page() {
     ]);
     const csv = [header.join(','), ...rows.map(cols => cols.map(v => (typeof v === 'string' ? `"${v}"` : String(v))).join(','))].join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  // Totales por Mes (Todos los años) — ORDEN DIC -> ENE
+  const totalsByMonthAllYears = useMemo(() => {
+    const m = new Map<string, number>();
+  // Fallback seguro por si alguna ref falla: recalcula todos los años por mes (Dic->Ene)
+  const getTotalsByMonthAllYears = React.useCallback(() => {
+    const m = new Map<string, number>();
+    for (const r of data) {
+      const mes = canonMonth(r.Mes);
+      m.set(mes, (m.get(mes) || 0) + (Number(r.Importe) || 0));
+    }
+    return DETAIL_MONTHS_ORDER.map(mes => ({ mes: labelMonth(mes), total: m.get(mes) || 0 }));
+  }, [data]);
+
+    for (const r of data) {
+      const mes = canonMonth(r.Mes);
+      m.set(mes, (m.get(mes) || 0) + (Number(r.Importe) || 0));
+    }
+    return DETAIL_MONTHS_ORDER.map(mes => ({ mes: labelMonth(mes), total: m.get(mes) || 0 }));
+  }, [data]);
+
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -979,7 +1114,12 @@ async function toggleTrueFullscreen() {
   }, [detailChartMode, availableYears, detailYear]);
 
   return (
-    <div ref={rootRef} className={`${dark ? 'bg-neutral-900 text-neutral-100' : 'bg-neutral-50 text-neutral-900'}`}>
+    <div ref={rootRef} className={`${dark ? 'bg-neutral-950 text-neutral-100' : 'bg-white text-neutral-900'}`}>
+      {/* Splash de inicio CRISP */}
+      {splashVisible && (
+        <SplashScreen dark={dark} onDone={() => setSplashVisible(false)} />
+      )}
+
       <Head>
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -987,24 +1127,55 @@ async function toggleTrueFullscreen() {
         <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700;900&display=swap" rel="stylesheet" />
       </Head>
       <style jsx global>{`
-        html, body, * { font-family: 'Roboto', system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
-        .card { border-radius: 14px; box-shadow: ${dark ? '0 6px 24px rgba(0,0,0,.35)' : '0 6px 24px rgba(0,0,0,.08)'}; }
-        .btn { border-radius: 12px; padding: 8px 12px; }
-        .btn-soft { background: ${dark ? '#1f2937' : '#ffffff'}; border: 1px solid ${dark ? '#374151' : '#e5e7eb'}; color: inherit; }
-        .btn-primary { background: #2563eb; color: #fff; }
-        .chip { font-size: 12px; padding: 4px 8px; border-radius: 999px; border: 1px solid ${dark ? '#374151' : '#e5e7eb'}; background: ${dark ? '#111827' : '#fff'}; }
-        .header-grad { background: linear-gradient(90deg, ${dark ? '#0b1220' : '#ffffff'}, ${dark ? '#0f172a' : '#f0faff'}); }
-        a:hover { opacity: .9 }
-        .no-scrollbar::-webkit-scrollbar { display: none; }
-        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-      `}</style>
+      :root{
+        --g-0:#0a0a0a; --g-50:#0b0f19; --g-100:#111827; --g-200:#1f2937; --g-300:#374151; --g-400:#4b5563; --g-500:#6b7280; --g-600:#9ca3af; --g-700:#d1d5db; --g-800:#e5e7eb; --g-900:#f3f4f6; --surface:#0b1220;
+        --card-bg-light:#ffffff; --card-bg-dark:#0b1220;
+        --ring:#60a5fa; --brand:#0ea5e9; --brand-600:#0284c7;
+        --radius:14px; --radius-sm:12px;
+      }
+
+      html, body, * { font-family: 'Roboto', system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+
+      .header-grad { backdrop-filter: blur(10px); }
+      .toolbar { border-radius: var(--radius); padding: 10px 12px; border: 1px solid rgba(255,255,255,.06); background: rgba(255,255,255,.06); }
+      :global(html.light) .toolbar { border-color: rgba(2,6,23,.08); background: rgba(2,6,23,.03); }
+
+      .search {
+        display:flex; align-items:center; gap:10px; width:100%;
+        border:1px solid rgba(2,6,23,.14); border-radius:12px; padding:8px 12px; background: rgba(255,255,255,.9);
+      }
+      :global(html.dark) .search{ background:#0f172a; border-color:#1f2937; }
+      .search input{ background:transparent; border:0; outline:0; flex:1; font-size:14px; }
+      .search input::placeholder{ color: var(--g-500); }
+
+      .btn { border-radius:12px; padding:9px 12px; border:1px solid rgba(2,6,23,.14); background:transparent; }
+      .btn:hover{ background: rgba(2,6,23,.05); }
+      :global(html.dark) .btn{ border-color:#1f2937; }
+      :global(html.dark) .btn:hover{ background:#0f172a; }
+
+      .btn-primary{ background: var(--brand); color:#fff; border-color: var(--brand-600); }
+      .btn-primary:hover{ background: var(--brand-600); }
+
+      .chip { border-radius: 999px; border: 1px solid rgba(2,6,23,.14); padding:4px 10px; font-size:12px; }
+
+      .card { border-radius:16px; border:1px solid rgba(2,6,23,.12); box-shadow: 0 10px 30px rgba(0,0,0,.06); }
+      :global(html.dark) .card { border-color:#1f2937; background: var(--card-bg-dark); }
+
+      .muted{ color: var(--g-500); }
+      .section-title{ font-weight:700; letter-spacing:.2px; }
+
+      footer .wrapper{ border-top:1px solid rgba(2,6,23,.1); }
+      :global(html.dark) footer .wrapper{ border-top-color:#1f2937; }
+    
+      .utilbar{border:1px solid rgba(2,6,23,.08); border-radius:14px;}
+    `}</style>
 
       {/* Modal de inicio */}
       <IntroModal open={showIntro} onClose={() => setShowIntro(false)} dark={dark} />
 
       {/* Header */}
-      <header className={`sticky top-0 z-30 border-b ${dark ? 'border-neutral-800' : 'border-neutral-200'} header-grad backdrop-blur`}> 
-        <div className="mx-auto max-w-7xl px-3 sm:px-4 py-3 flex flex-col lg:flex-row lg:items-center gap-3">
+      <header className={`sticky top-0 z-30 border-b ${dark ? 'border-neutral-800' : 'border-neutral-200'} header-grad backdrop-blur shadow-md rounded-b-xl`}> 
+        <div className="mx-auto max-w-7xl px-5 sm:px-8 py-4 flex flex-col lg:flex-row lg:items-center gap-3">
           <div className="flex items-center justify-between gap-3">
             <button
               onClick={toggleTheme}
@@ -1036,38 +1207,124 @@ async function toggleTrueFullscreen() {
               {availableYears.map(y => <option key={y} value={y}>Exportar: {y}</option>)}
             </select>
 
-            <button onClick={() => exportCSV(exportYear)} className="btn btn-soft text-sm inline-flex items-center gap-2">
+            <button onClick={() => exportCSV(exportYear)} className="btn text-sm inline-flex items-center gap-2">
               <Download className="h-4 w-4" /> Exportar CSV
             </button>
-            <button onClick={() => exportXLS(exportYear)} className="btn btn-soft text-sm inline-flex items-center gap-2">
+            <button onClick={() => exportXLS(exportYear)} className="btn text-sm inline-flex items-center gap-2">
               <Download className="h-4 w-4" /> Exportar XLS
             </button>
 
             {/* NUEVO: Captura JPG de la página */}
-            <button onClick={() => captureJPG('pagina')} className="btn btn-soft text-sm inline-flex items-center gap-2" title="Capturar toda la página en JPG">
+            <button onClick={() => captureJPG('pagina')} className="btn text-sm inline-flex items-center gap-2" title="Capturar toda la página en JPG">
               <Camera className="h-4 w-4" /> Capturar JPG
             </button>
           </div>
         </div>
         {/* SUBHEADER */}
         <div className={`${dark ? 'bg-neutral-900 text-neutral-100' : 'bg-[#f0faff] text-[#0b4b66]'} border-t ${dark ? 'border-neutral-800' : 'border-[#bae6fd]'} py-2`}>
-          <div className="mx-auto max-w-7xl px-3 sm:px-4 text-sm md:text-base font-semibold text-center">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 text-[13px] md:text-[15px] font-medium text-center tracking-tight opacity-95">
             {scopeTitle}
           </div>
         </div>
       </header>
+
+{/* Utility Toolbar: búsqueda + compartir + exportar + capturar */}
+<div data-ui='utility-toolbar' className="w-full">
+  <div className="mx-auto max-w-7xl px-5 sm:px-8 py-3 flex flex-col gap-2 md:flex-row md:items-center md:gap-3">
+    <div className="flex-1">
+      <div className="search" role="search">
+        <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5m-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"/></svg>
+        <input
+          type="search"
+          value={query}
+          onChange={(e)=>setQuery(e.target.value)}
+          placeholder="Buscar en todos los años (medio, proveedor, resolución, mes)..."
+          aria-label="Buscar"
+        />
+      
+        {query ? (
+          <button
+            title="Limpiar búsqueda"
+            aria-label="Limpiar búsqueda"
+            className="btn-ghost"
+            onClick={() => setQuery('')}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-x h-4 w-4 opacity-70"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>
+          </button>
+        ) : null}
+        <button
+          className="btn btn-primary text-sm inline-flex items-center gap-2 min-w-[108px] justify-center"
+          onClick={() => { scrollToResults(); setTimeout(scrollToFirstMatch, 250); }}
+          title="Buscar"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-search h-4 w-4"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>
+          Buscar
+        </button>
+    </div>
+    </div>
+    <div className="flex items-center gap-2">
+      <button
+        className="btn btn-ghost text-sm inline-flex items-center gap-2"
+        onClick={() => {
+          try {
+            if (navigator.share) {
+              navigator.share({ title: document.title, text: 'Compartir esta vista', url: location.href });
+  // Auto-scroll al primer match cuando hay búsqueda
+  useEffect(() => {
+    if (query && query.trim().length > 0) {
+      const t = setTimeout(() => scrollToFirstMatch(), 200);
+      return () => clearTimeout(t);
+    }
+  }, [query, scrollToFirstMatch]);
+
+  useEffect(() => {
+    if (chartMode === 'monthsOfYear') {
+      if (yearFilter === 'all') {
+        if (!chartYear) setChartYear(availableYears[0]);
+      } else if (typeof yearFilter === 'number' && chartYear !== yearFilter) {
+        setChartYear(yearFilter);
+      }
+    }
+  }, [chartMode, yearFilter, chartYear, availableYears]);
+
+            } else {
+              navigator.clipboard?.writeText(location.href);
+              alert('Enlace copiado.');
+            }
+          } catch {}
+        }}
+        title="Compartir"
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24"><path fill="currentColor" d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.02-4.11A2.99 2.99 0 0 0 18 7.91A3 3 0 1 0 15 5c0 .24.04.47.09.7L8.07 9.81A2.996 2.996 0 0 0 6 9a3 3 0 1 0 2.91 3.7l7.12 4.17c-.02.16-.03.32-.03.48a3 3 0 1 0 3-3z"/></svg>
+        Compartir
+      </button>
+      <button
+        className="btn text-sm inline-flex items-center gap-2"
+        onClick={() => { try { exportCSV?.('all') } catch {} }}
+        title="Exportar CSV (vista)"
+      >
+        CSV
+      </button>
+      <button
+        className="btn text-sm inline-flex items-center gap-2"
+        onClick={() => { try { captureJPG?.('detalle') } catch {} }}
+        title="Capturar JPG (Detalle)"
+      >
+        Capturar
+      </button>
+    </div>
+  </div>
+</div>
+
 
       <main className="mx-auto max-w-7xl px-3 sm:px-4 py-6 space-y-8">
         {/* Gráfico principal */}
         <section className={`card p-3 sm:p-4 ${dark ? 'bg-neutral-800 border border-neutral-700' : 'bg-white border border-neutral-200'}`}>
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-2">
             <div>
-              <h3 className="text-base sm:text-lg font-semibold">Gráfico principal</h3>
+              <h3 className="text-lg sm:text-xl section-title">Gráfico principal</h3>
               <div className="text-xs sm:text-sm opacity-80 mt-1">
-                {chartMode === 'yearTotals'
-                  ? <>Total por año · Total acumulado: <strong>{currencyFormatter.format(grandTotal)}</strong></>
-                  : <>Meses del año {totalsByMonthOfYear.year}</>
-                }
+                {chartMode === 'yearTotals' ? <>Todos los años</> : <>Meses del año {totalsByMonthOfYear.year}</>}
               </div>
               {/* NUEVO: Proveedores */}
               <div className="text-[11px] sm:text-xs mt-1 opacity-80">
@@ -1082,8 +1339,18 @@ async function toggleTrueFullscreen() {
                 onChange={(e) => setChartMode(e.target.value as ChartMode)}
                 title="Modo de gráfico"
               >
-                <option value="yearTotals">Total por año</option>
-                <option value="monthsOfYear">Meses de un año</option>
+                <option value="yearTotals">Todos los años</option>
+                <option value="monthsOfYear">Meses del año</option>
+              </select>
+              <select
+                aria-label="Filtrar por año"
+                className="btn btn-soft text-sm"
+                value={yearFilter as any}
+                onChange={(e) => setYearFilter(e.target.value === 'all' ? 'all' : Number(e.target.value))}
+                title="Filtrar por año (incluye 'Todos los años')"
+              >
+                <option value="all">Todos los años</option>
+                {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
               </select>
 
               {chartMode === 'monthsOfYear' && (
@@ -1129,7 +1396,7 @@ async function toggleTrueFullscreen() {
                   </Bar>
                 </BarChart>
               ) : (
-                <BarChart data={totalsByMonthOfYear.rows} barSize={bp === 'sm' ? 20 : bp === 'md' ? 26 : 32} margin={{ top: 64, right: 12, bottom: 10, left: yAxisWidth }}>
+                <BarChart data={(yearFilter === 'all' ? (typeof totalsByMonthAllYears !== 'undefined' ? totalsByMonthAllYears : getTotalsByMonthAllYears()) : totalsByMonthOfYear.rows)} barSize={bp === 'sm' ? 20 : bp === 'md' ? 26 : 32} margin={{ top: 64, right: 12, bottom: 10, left: yAxisWidth }}>
                   <CartesianGrid vertical={false} strokeDasharray="3 3" stroke={dark ? '#374151' : '#cfeffd'} />
                   <XAxis
                     dataKey="mes"
@@ -1173,27 +1440,6 @@ async function toggleTrueFullscreen() {
 
         {/* Buscador + Año */}
         <section className="grid gap-3 md:grid-cols-3">
-          <div className="md:col-span-2 flex gap-2">
-            <div className={`flex items-center gap-2 card p-2.5 sm:p-3 w/full ${''} ${dark ? 'bg-neutral-800 border border-neutral-700' : 'bg-white border border-neutral-200'}`}>
-              <Search className="h-5 w-5 opacity-70" />
-              <input
-                value={queryInput}
-                onChange={e => setQueryInput(e.target.value)}
-                placeholder="Buscar en todos los años (medio, proveedor, resolución, mes)..."
-                className={`w-full outline-none bg-transparent text-sm sm:text-base`}
-              />
-              {query && (
-                <button onClick={clearSearch} title="Limpiar búsqueda" aria-label="Limpiar búsqueda">
-                  <XIcon className="h-4 w-4 opacity-70" />
-                </button>
-              )}
-            </div>
-            <button onClick={handleSearch} className="btn btn-primary text-sm inline-flex items-center gap-2 min-w-[108px] justify-center">
-              {searching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-              Buscar
-            </button>
-          </div>
-
           <select className={`btn btn-soft text-sm`} value={yearFilter as any} onChange={onYearChange} aria-label="Filtrar por año">
             <option value="all">Todos los años</option>
             {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
@@ -1321,6 +1567,7 @@ async function toggleTrueFullscreen() {
                     <div key={card.Medio} className={`card p-3 ${dark ? 'bg-neutral-800 border border-neutral-700' : 'bg-white border border-neutral-200'}`}>
                       <div className="flex justify-between items-center mb-2">
                         <button
+                          id={`medio-${normalize(card.Medio).replace(/\s+/g,"-")}`}
                           onClick={() => verAdjudicaciones(card.Medio)}
                           className="font-semibold text-left underline-offset-2 hover:underline"
                           title="Ver adjudicaciones del medio"
@@ -1360,10 +1607,10 @@ async function toggleTrueFullscreen() {
           {/* Barra superior del detalle */}
           <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3 ${detailFullscreen ? 'sticky top-0 pt-1 pb-2 z-[10000]' : ''}`}>
             <div className="flex items-center gap-2">
-              <h3 className="text-base sm:text-lg font-semibold">Detalle de adjudicaciones</h3>
+              <h3 className="text-lg sm:text-xl section-title">Detalle de adjudicaciones</h3>
               <button
                 onClick={toggleTrueFullscreen}
-                className="btn btn-soft text-sm inline-flex items-center gap-2"
+                className="btn text-sm inline-flex items-center gap-2"
                 title={detailFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}
               >
                 {detailFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
@@ -1372,7 +1619,7 @@ async function toggleTrueFullscreen() {
               {/* NUEVO: Captura del bloque de detalle */}
               <button
                 onClick={() => captureJPG('detalle')}
-                className="btn btn-soft text-sm inline-flex items-center gap-2"
+                className="btn text-sm inline-flex items-center gap-2"
                 title="Capturar este bloque en JPG"
               >
                 <Camera className="h-4 w-4" /> Capturar detalle
@@ -1393,7 +1640,7 @@ async function toggleTrueFullscreen() {
                       setCopyOk(true);
                       setTimeout(() => setCopyOk(false), 1200);
                     }}
-                    className="btn btn-soft text-sm inline-flex items-center gap-2"
+                    className="btn text-sm inline-flex items-center gap-2"
                     title="Copiar link para compartir"
                   >
                     <LinkIcon className="h-4 w-4" /> Copiar link
@@ -1564,6 +1811,8 @@ async function toggleTrueFullscreen() {
           La vigilancia eterna es el precio de la libertad · Sitio realizado por ⛧{' '}
           <a href="https://x.com/innomtek" target="_blank" className="underline">
             @innomtek
+
+
           </a>
           <div className="mt-3 sm:mt-2 flex flex-col items-center gap-2">
             <span>Pueden donarme si quieren a:</span>
@@ -1582,7 +1831,7 @@ async function toggleTrueFullscreen() {
             </div>
 
             <div className="text-xs opacity-80">
-              Fuente: https://normas.gba.gob.ar - Ultima actualización 31/11/2025 #KICILLOFHDRMP
+              Fuente: https://normas.gba.gob.ar - Ultima actualización 11/11/2025 #PAUTAPBA
             </div>
           </div>
         </div>
