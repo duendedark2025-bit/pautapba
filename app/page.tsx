@@ -179,7 +179,7 @@ const INTRO_SLIDES: Slide[] = [
   {
     titulo: '¿Sabías que si el Gobernador usa el 100% de lo que gasta en pauta puede mejorar? 🛡️ Seguridad',
     bullets: [
-      '💰 $79.284.916.379 ARS (u$s 83.457.806) – 100%',
+      '💰 $90.813.239.931,00 ARS (u$s 61.997.450,40) – 100%',
       '🚓 Comprar 15.800 patrulleros ($5.000.000 c/u).',
       '📹 Instalar 158.000 cámaras de seguridad ($500.000 c/u).',
       '👮 Pagar el aumento salarial del 30% para más de 90.000 policías bonaerenses durante un año.',
@@ -190,7 +190,7 @@ const INTRO_SLIDES: Slide[] = [
   {
     titulo: '¿Sabías que si el Gobernador usa el 100% de lo que gasta en pauta puede mejorar? 🎓 Educación',
     bullets: [
-      '💰 $79.284.916.379 ARS (u$s 83.457.806) – 100%',
+      '💰 $90.813.239.931,00 ARS (u$s 61.997.450,40) – 100%',
       '🏫 Construir 1.585 escuelas nuevas ($50.000.000 c/u).',
       '💻 Entregar 528.000 notebooks ($150.000 c/u).',
       '📚 Dotar de 10 millones de libros de texto ($8.000 c/u).',
@@ -201,7 +201,7 @@ const INTRO_SLIDES: Slide[] = [
   {
     titulo: '¿Sabías que si el Gobernador usa el 100% de lo que gasta en pauta puede mejorar? 🏥 Salud',
     bullets: [
-      '💰 $79.284.916.379 ARS (u$s 83.457.806) – 100%',
+      '💰 $90.813.239.931,00 ARS (u$s 61.997.450,40) – 100%',
       '🏥 Construir o equipar 395 hospitales ($200.000.000 c/u).',
       '🚑 Comprar 5.285 ambulancias ($15.000.000 c/u).',
       '💉 Financiar la vacunación completa contra la gripe para toda la población bonaerense.',
@@ -214,7 +214,7 @@ const INTRO_SLIDES: Slide[] = [
   {
     titulo: '¿Sabías que si el Gobernador usa el 100% de lo que gasta en pauta puede mejorar? 🚧 Infraestructura',
     bullets: [
-      '💰 $79.284.916.379 ARS (u$s 83.457.806) – 100%',
+      '💰 $90.813.239.931,00 ARS (u$s 61.997.450,40) – 100%',
       '🚰 Ampliar redes de agua potable y cloacas a más de 1 millón de hogares.',
       '🛣️ Pavimentar 7.900 cuadras urbanas ($10.000.000 c/u).',
       '🏗️ Construir 250 centros comunitarios ($300.000.000 c/u).',
@@ -225,7 +225,7 @@ const INTRO_SLIDES: Slide[] = [
   {
     titulo: '¿Sabías que si el Gobernador usa el 100% de lo que gasta en pauta puede mejorar? 🤝 Desarrollo Social',
     bullets: [
-      '💰 $79.284.916.379 ARS (u$s 83.457.806) – 100%',
+      '💰 $90.813.239.931,00 ARS (u$s 61.997.450,40) – 100%',
       '🍲 Financiar 26.000 comedores comunitarios durante un año ($3.000.000 c/u).',
       '👵 Otorgar 79.000 pensiones sociales de $1.000.000 c/u.',
       '🎓 Brindar 793.000 becas de capacitación laboral de $100.000 c/u.',
@@ -1868,7 +1868,7 @@ async function toggleTrueFullscreen() {
             </div>
 
             <div className="text-xs opacity-80">
-              Fuente: https://normas.gba.gob.ar - Ultima actualización 11/11/2025 #PAUTAPBA
+              Fuente: https://normas.gba.gob.ar - Ultima actualización -Ultima  Resolución cargada al sistema 288- 2025 09/12/2025 #PAUTAPBA
             </div>
           </div>
         </div>
