@@ -1229,7 +1229,7 @@ async function toggleTrueFullscreen() {
               className="text-[18px] sm:text-[20px] md:text-2xl font-extrabold tracking-tight"
               style={{ lineHeight: 1.2 }}
             >
-              Pauta oficial provincia de Buenos Aires
+              PAUTA OFICIAL PBA
             </motion.h1>
           </div>
 
